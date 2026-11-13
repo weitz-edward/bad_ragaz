@@ -3,7 +3,7 @@
    - fonts, icons, photos: saved on first use, then served from the phone
    Everything is served from this site; there are no outside libraries.
    Bump SHELL_VERSION when a change must replace the saved copy at once. */
-const SHELL_VERSION = "2026-11-13.1";
+const SHELL_VERSION = "2026-11-13.2";
 const SHELL_CACHE = "ragaz-shell-" + SHELL_VERSION;
 const ASSET_CACHE = "ragaz-assets-v1";
 const SHELL_URLS = ["./", "./index.html", "./manifest.webmanifest", "./icon-v3-192.png", "./icon-v3-512.png",
