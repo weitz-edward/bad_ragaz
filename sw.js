@@ -1,9 +1,10 @@
 /* Bad Ragaz — service worker. Keeps the app usable without a connection:
-   - the page: fresh copy when online, saved copy when not
+   - the page: the saved copy opens at once; a fresh copy is fetched in the background,
+     and the page offers to refresh when that copy is newer
    - fonts, icons, photos: saved on first use, then served from the phone
    Everything is served from this site; there are no outside libraries.
    Bump SHELL_VERSION when a change must replace the saved copy at once. */
-const SHELL_VERSION = "2026-11-13.2";
+const SHELL_VERSION = "2026-11-14.1";
 const SHELL_CACHE = "ragaz-shell-" + SHELL_VERSION;
 const ASSET_CACHE = "ragaz-assets-v1";
 const SHELL_URLS = ["./", "./index.html", "./manifest.webmanifest", "./icon-v3-192.png", "./icon-v3-512.png",
@@ -24,18 +25,17 @@ self.addEventListener("activate", (event) => {
     await self.clients.claim();
   })());
 });
-async function pageResponse(request) {
+async function pageResponse(event) {
   const shell = await caches.open(SHELL_CACHE);
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);   // weak signal: don't hang, use the saved copy
-    const fresh = await fetch(request, { signal: controller.signal });
-    clearTimeout(timer);
-    if (fresh.ok) shell.put("./index.html", fresh.clone());
+  const cached = (await shell.match("./index.html")) || (await shell.match("./"));
+  const refresh = (async () => {
+    const fresh = await fetch("./index.html", { cache: "no-store" });
+    if (!fresh.ok) throw new Error("status " + fresh.status);     // an error page never replaces the saved app
+    await shell.put("./index.html", fresh.clone());              // the page itself notices and offers to refresh
     return fresh;
-  } catch (e) {
-    return (await shell.match("./index.html")) || (await shell.match("./")) || Response.error();
-  }
+  })();
+  if (cached) { event.waitUntil(refresh.catch(() => {})); return cached; }
+  try { return await refresh; } catch (e) { return Response.error(); }
 }
 async function cacheFirst(request) {
   const hit = await caches.match(request, { ignoreVary: true, ignoreSearch: true });
@@ -51,7 +51,7 @@ self.addEventListener("fetch", (event) => {
   if (!/^https?:$/.test(url.protocol)) return;
   if (LIVE_DATA_HOSTS.includes(url.hostname)) return;   // weather: always live (the app keeps its own last copy)
   if (url.origin !== self.location.origin) return;
-  if (request.mode === "navigate" || /\/(index\.html)?$/.test(url.pathname)) { event.respondWith(pageResponse(request)); return; }
+  if (request.mode === "navigate" || /\/(index\.html)?$/.test(url.pathname)) { event.respondWith(pageResponse(event)); return; }
   if (/\/sw\.js$/.test(url.pathname)) return;
   event.respondWith(cacheFirst(request).catch(() => caches.match(request, { ignoreVary: true }).then((r) => r || Response.error())));
 });
